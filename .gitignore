@@ -1,0 +1,66 @@
+# -------------------------
+# Global ignores
+# -------------------------
+*.log
+*.tmp
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
+# -------------------------
+# Node / React + Vite frontend
+# -------------------------
+kb-ui/node_modules/
+kb-ui/dist/
+kb-ui/.env
+kb-ui/.env.local
+kb-ui/.env.*.local
+
+# Vite cache
+kb-ui/.vite/
+
+# Editor settings
+kb-ui/.vscode/
+kb-ui/.idea/
+
+# -------------------------
+# Java / Spring Boot backend
+# -------------------------
+knowbuddy-backend/knowbuddy/target/
+knowbuddy-backend/knowbuddy/.classpath
+knowbuddy-backend/knowbuddy/.project
+knowbuddy-backend/knowbuddy/.settings/
+knowbuddy-backend/knowbuddy/resources/application.properties
+
+
+# # Maven wrapper
+# knowbuddy-backend/knowbuddy/.mvn/
+# knowbuddy-backend/knowbuddy/mvnw
+# knowbuddy-backend/knowbuddy/mvnw.cmd
+
+# # Gradle wrapper (if used)
+# backend/.gradle/
+# backend/build/
+# backend/gradlew
+# backend/gradlew.bat
+
+# # Backend environment configs
+# backend/.env
+# backend/application-*.yml
+# backend/application-*.properties
+
+# -------------------------
+# OS / IDE files
+# -------------------------
+*.iml
+*.class
+*.jar
+*.war
+*.ear
+
+# -------------------------
+# Logs
+# -------------------------
+logs/
+*.log
