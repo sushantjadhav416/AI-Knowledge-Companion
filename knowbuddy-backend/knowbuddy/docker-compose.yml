@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: knowbuddy-postgres
+    environment:
+      POSTGRES_DB: knowbuddy
+      POSTGRES_USER: knowbuddy
+      POSTGRES_PASSWORD: admin1234
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowbuddy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── KnowBuddy Backend ────────────────────────────────────────────────────────
+  knowbuddy-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: knowbuddy-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: knowbuddy
+      DB_USER: knowbuddy
+      DB_PASSWORD: admin1234
+      # OpenAI
+      OPENAI_API_KEY: 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
+      # AstraDB
+      ASTRA_DB_TOKEN: AstraCS:MhsyZpRbzdwbeimsHSunkCee:bbbc7c58de5a1a5c702ce897f069d54b60e0aa30920255e65a69aa2c93839b6e
+      ASTRA_DB_ID: 3ed15706-2d45-400c-ac97-b6172eef49fc
+      ASTRA_DB_REGION: us-east-2
+      ASTRA_DB_KEYSPACE: knowbuddy
+      ASTRA_DB_TABLE: text-embedding-3-small
+      # Local file storage — mounted volume so files survive restarts
+      STORAGE_BASE_PATH: /app/uploads
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads_data:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads_data:

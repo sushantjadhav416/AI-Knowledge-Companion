@@ -1,0 +1,12 @@
+{"properties": [
+  {
+    "name": "knowbuddy.storage.local.base-path",
+    "type": "java.lang.String",
+    "description": "A description for 'knowbuddy.storage.local.base-path'"
+  },
+  {
+    "name": "knowbuddy.storage.local.base-path",
+    "type": "java.lang.String",
+    "description": "A description for 'knowbuddy.storage.local.base-path'"
+  }
+]}
