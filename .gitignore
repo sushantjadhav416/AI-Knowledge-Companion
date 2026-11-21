@@ -31,8 +31,7 @@ knowbuddy-backend/knowbuddy/target/
 knowbuddy-backend/knowbuddy/.classpath
 knowbuddy-backend/knowbuddy/.project
 knowbuddy-backend/knowbuddy/.settings/
-knowbuddy-backend/knowbuddy/resources/application.properties
-
+knowbuddy-backend/knowbuddy/src/main/resources/application.properties
 
 # # Maven wrapper
 # knowbuddy-backend/knowbuddy/.mvn/

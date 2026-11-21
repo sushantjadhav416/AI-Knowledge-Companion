@@ -2,6 +2,7 @@ import { Box, Typography, Avatar, Chip, Collapse, IconButton } from '@mui/materi
 import { ExpandMore, ExpandLess, AutoAwesome, Person } from '@mui/icons-material'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { formatSourceLabel } from '../../utils'
 
 export default function MessageBubble({ message, sources = [] }) {
   const isUser = message.role === 'USER'
@@ -61,7 +62,7 @@ export default function MessageBubble({ message, sources = [] }) {
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
                 {sources.map((src, i) => (
                   <Chip key={i} size="small"
-                    label={`${src.documentName} · p.${src.pageNumber} (${(src.score * 100).toFixed(0)}%)`}
+                    label={formatSourceLabel(src)}
                     sx={{
                       fontSize: '0.68rem', height: 20,
                       bgcolor: '#F5F4FC', color: 'text.secondary',

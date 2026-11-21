@@ -1,5 +1,7 @@
 import api from './axiosInstance'
+
 const BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+
 const chatService = {
   createSession(documentId, title) {
     const params = {}
@@ -7,152 +9,74 @@ const chatService = {
     if (title) params.title = title
     return api.post('/v1/chat/sessions', null, { params })
   },
-  getSessions()              { return api.get('/v1/chat/sessions') },
-  getHistory(sessionId)      { return api.get(`/v1/chat/sessions/${sessionId}/history`) },
-  deleteSession(sessionId)   { return api.delete(`/v1/chat/sessions/${sessionId}`) },
-  chat(payload)              { return api.post('/v1/chat', payload) },
-  chatStream(payload, onToken, onDone, onError, onSources) {
-    const ctrl = new AbortController()
-    fetch(`${BASE}/v1/chat/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    }).then(async (res) => {
-      if (!res.ok) {
-        const detail = await res.text()
-        throw new Error(detail || `Chat stream failed (${res.status})`)
+  getSessions()            { return api.get('/v1/chat/sessions') },
+  getHistory(sessionId)    { return api.get(`/v1/chat/sessions/${sessionId}/history`) },
+  deleteSession(sessionId) { return api.delete(`/v1/chat/sessions/${sessionId}`) },
+  chat(payload)            { return api.post('/v1/chat', payload) },
+
+  /**
+   * Streams an answer over Server-Sent Events.
+   * The server sends: unnamed events holding one token each, then `event: sources` with a JSON
+   * array of citations, then `event: done`.
+   * Frames are split on blank lines. A token's leading space is part of the token, so only the
+   * "data:" prefix is removed (never trimmed). Multi-line tokens arrive as several data lines.
+   * Returns a function that cancels the stream.
+   */
+  chatStream(payload, { onToken, onSources, onDone, onError } = {}) {
+    const controller = new AbortController()
+    let finished = false
+    const finish = () => { if (!finished) { finished = true; onDone?.() } }
+
+    const dispatch = (frame) => {
+      let event = 'message'
+      const data = []
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        else if (line.startsWith('data:')) data.push(line.slice(5))
       }
-      if (!res.body) throw new Error('Chat stream returned an empty response.')
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let eventName = 'message'
-      let eventData = []
-      let completed = false
-      let failed = false
-
-      const failStream = (error) => {
-        if (failed) return
-        failed = true
-        onError?.(error)
+      if (data.length === 0) return
+      const text = data.join('\n')
+      if (event === 'sources') {
+        try { onSources?.(JSON.parse(text)) } catch { /* ignore malformed sources */ }
+      } else if (event === 'done') {
+        finish()
+      } else {
+        onToken?.(text)
       }
+    }
 
-      const publishSources = (value) => {
-        const isSource = (item) => item && typeof item === 'object' &&
-          ('documentId' in item || 'documentName' in item) &&
-          ('pageNumber' in item || 'score' in item)
-        const sources = Array.isArray(value)
-          ? value
-          : isSource(value)
-            ? [value]
-            : value?.sources ?? value?.citations
-        if (Array.isArray(sources)) onSources?.(sources)
-      }
+    ;(async () => {
+      try {
+        const res = await fetch(`${BASE}/v1/chat/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        })
+        if (!res.ok || !res.body) throw new Error(`Chat request failed (${res.status})`)
 
-      const publishData = (data) => {
-        if (failed || completed) return
-
-        if (eventName === 'done' || data === '[DONE]') {
-          completed = true
-          onDone?.()
-          return
-        }
-
-        if (eventName === 'error') {
-          failStream(new Error(data || 'The chat stream returned an error.'))
-          return
-        }
-
-        if (eventName === 'sources' || eventName === 'citation' || eventName === 'citations') {
-          try {
-            publishSources(JSON.parse(data))
-          } catch {
-            failStream(new Error('Chat stream returned invalid source metadata.'))
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+          let boundary
+          while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+            dispatch(buffer.slice(0, boundary))
+            buffer = buffer.slice(boundary + 2)
           }
-          return
         }
-
-        let value = data
-        try {
-          value = JSON.parse(data)
-        } catch {
-          // Plain text SSE data is the common token format.
-        }
-
-        if (typeof value === 'string') {
-          onToken(value)
-          return
-        }
-
-        if (Array.isArray(value)) {
-          const looksLikeSources = value.every(item =>
-            item && typeof item === 'object' &&
-            ('documentId' in item || 'documentName' in item) &&
-            ('pageNumber' in item || 'score' in item)
-          )
-          if (looksLikeSources) publishSources(value)
-          else onToken(data)
-          return
-        }
-
-        if (value && typeof value === 'object') {
-          publishSources(value)
-          const token = value.token ?? value.content ?? value.delta ??
-            value.answer ?? value.response ?? value.text ?? value.message
-          if (typeof token === 'string') onToken(token)
-          return
-        }
-
-        onToken(data)
+        if (buffer.trim()) dispatch(buffer)
+        finish()
+      } catch (e) {
+        if (e.name !== 'AbortError') onError?.(e)
       }
+    })()
 
-      const dispatchEvent = () => {
-        if (eventData.length) publishData(eventData.join('\n'))
-        eventName = 'message'
-        eventData = []
-      }
-
-      const processLine = (line) => {
-        if (!line) {
-          dispatchEvent()
-          return
-        }
-        if (line.startsWith(':')) return
-
-        const separator = line.indexOf(':')
-        const field = separator === -1 ? line : line.slice(0, separator)
-        const fieldValue = separator === -1 ? '' : line.slice(separator + 1).replace(/^ /, '')
-
-        if (field === 'event') eventName = fieldValue
-        if (field === 'data') eventData.push(fieldValue)
-      }
-
-      while (true) {
-        const { done, value } = await reader.read()
-        buffer += decoder.decode(value, { stream: !done })
-        let lineEnd
-        while ((lineEnd = buffer.search(/[\r\n]/)) !== -1) {
-          if (buffer[lineEnd] === '\r' && lineEnd === buffer.length - 1 && !done) break
-          const line = buffer.slice(0, lineEnd)
-          const delimiterLength = buffer[lineEnd] === '\r' && buffer[lineEnd + 1] === '\n' ? 2 : 1
-          buffer = buffer.slice(lineEnd + delimiterLength)
-          processLine(line)
-        }
-        if (done) break
-      }
-
-      if (buffer) processLine(buffer)
-      dispatchEvent()
-      if (!completed && !failed) {
-        completed = true
-        onDone?.()
-      }
-    }).catch((e) => {
-      if (e.name !== 'AbortError') onError?.(e)
-    })
-    return () => ctrl.abort()
+    return () => controller.abort()
   },
 }
+
 export default chatService
